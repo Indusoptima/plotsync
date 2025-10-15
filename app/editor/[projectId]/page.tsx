@@ -454,14 +454,13 @@ export default function EditorPage() {
               )
             ) : (
               currentPlan && (
-                <div className="h-full w-full overflow-auto bg-zinc-50 p-8">
-                  <div className="mx-auto max-w-6xl">
-                    <FloorPlanSVGExporter
-                      planData={currentPlan}
-                      width={1200}
-                      height={900}
-                    />
-                  </div>
+                <div className="h-full w-full bg-zinc-50">
+                  <FloorPlanSVGExporter
+                    planData={currentPlan}
+                    width={1200}
+                    height={900}
+                    interactive={true}
+                  />
                 </div>
               )
             )}

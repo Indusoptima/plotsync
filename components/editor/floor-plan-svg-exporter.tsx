@@ -1,3 +1,9 @@
+"use client"
+
+import { useState, useRef, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
+
 interface FloorPlanData {
   walls: Array<{ x1: number; y1: number; x2: number; y2: number }>
   rooms: Array<{
@@ -18,17 +24,107 @@ interface FloorPlanSVGExporterProps {
   planData: FloorPlanData
   width?: number
   height?: number
+  interactive?: boolean
 }
 
-export function FloorPlanSVGExporter({ planData, width = 800, height = 600 }: FloorPlanSVGExporterProps) {
+export function FloorPlanSVGExporter({ planData, width = 800, height = 600, interactive = true }: FloorPlanSVGExporterProps) {
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+
+  // Fit to screen on mount
+  useEffect(() => {
+    if (!interactive) return
+    handleFitToScreen()
+  }, [planData, interactive])
+
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev * 1.2, 5))
+  }
+
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev / 1.2, 0.1))
+  }
+
+  const handleFitToScreen = () => {
+    if (!containerRef.current || !planData || planData.walls.length === 0) return
+
+    const container = containerRef.current
+    const containerWidth = container.clientWidth
+    const containerHeight = container.clientHeight
+
+    // Calculate bounds
+    const allX = [
+      ...planData.walls.flatMap(w => [w.x1, w.x2]),
+      ...planData.rooms.map(r => r.x),
+      ...planData.rooms.map(r => r.x + r.width),
+    ]
+    const allY = [
+      ...planData.walls.flatMap(w => [w.y1, w.y2]),
+      ...planData.rooms.map(r => r.y),
+      ...planData.rooms.map(r => r.y + r.height),
+    ]
+
+    const minX = Math.min(...allX)
+    const maxX = Math.max(...allX)
+    const minY = Math.min(...allY)
+    const maxY = Math.max(...allY)
+
+    const planWidth = maxX - minX
+    const planHeight = maxY - minY
+
+    const scale = 15
+    const scaledWidth = planWidth * scale
+    const scaledHeight = planHeight * scale
+
+    // Calculate zoom to fit with padding
+    const padding = 100
+    const zoomX = (containerWidth - padding * 2) / scaledWidth
+    const zoomY = (containerHeight - padding * 2) / scaledHeight
+    const optimalZoom = Math.min(zoomX, zoomY, 1.5)
+
+    setZoom(optimalZoom)
+    setPan({ x: 0, y: 0 })
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!interactive) return
+    setIsPanning(true)
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!interactive || !isPanning) return
+    setPan({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y,
+    })
+  }
+
+  const handleMouseUp = () => {
+    setIsPanning(false)
+  }
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (!interactive) return
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    setZoom(prev => Math.max(0.1, Math.min(prev * delta, 5)))
+  }
+
   if (!planData || planData.walls.length === 0) {
     return (
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} xmlns="http://www.w3.org/2000/svg">
-        <rect width={width} height={height} fill="#f9fafb" />
-        <text x={width / 2} y={height / 2} textAnchor="middle" fill="#9ca3af" fontSize="16">
-          No floor plan data
-        </text>
-      </svg>
+      <div ref={containerRef} className="relative h-full w-full">
+        <svg ref={svgRef} width={width} height={height} viewBox={`0 0 ${width} ${height}`} xmlns="http://www.w3.org/2000/svg">
+          <rect width={width} height={height} fill="#f9fafb" />
+          <text x={width / 2} y={height / 2} textAnchor="middle" fill="#9ca3af" fontSize="16">
+            No floor plan data
+          </text>
+        </svg>
+      </div>
     )
   }
 
@@ -78,29 +174,68 @@ export function FloorPlanSVGExporter({ planData, width = 800, height = 600 }: Fl
   }
 
   return (
-    <svg 
-      width={width} 
-      height={height} 
-      viewBox={`0 0 ${width} ${height}`} 
-      xmlns="http://www.w3.org/2000/svg"
-      className="floor-plan-svg"
+    <div 
+      ref={containerRef}
+      className="relative h-full w-full overflow-hidden"
+      style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onWheel={handleWheel}
     >
-      {/* Background */}
-      <rect width={width} height={height} fill="#f9fafb" />
+      {/* Zoom Controls */}
+      {interactive && (
+        <div className="absolute right-4 top-4 z-10 flex flex-col gap-2">
+          <Button
+            size="icon"
+            variant="secondary"
+            onClick={handleZoomIn}
+            className="h-10 w-10 bg-white shadow-lg hover:bg-gray-100"
+          >
+            <ZoomIn className="h-5 w-5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="secondary"
+            onClick={handleZoomOut}
+            className="h-10 w-10 bg-white shadow-lg hover:bg-gray-100"
+          >
+            <ZoomOut className="h-5 w-5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="secondary"
+            onClick={handleFitToScreen}
+            className="h-10 w-10 bg-white shadow-lg hover:bg-gray-100"
+          >
+            <Maximize2 className="h-5 w-5" />
+          </Button>
+          <div className="rounded-md bg-white px-2 py-1 text-center text-xs font-medium shadow-lg">
+            {Math.round(zoom * 100)}%
+          </div>
+        </div>
+      )}
 
-      {/* Grid pattern for reference */}
-      <defs>
-        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e5e7eb" strokeWidth="0.5" />
-        </pattern>
-        
-        {/* Door arc pattern */}
-        <marker id="doorArc" markerWidth="10" markerHeight="10" refX="5" refY="5">
-          <circle cx="5" cy="5" r="3" fill="#8B4513" />
-        </marker>
-      </defs>
-
-      <rect width={width} height={height} fill="url(#grid)" />
+      {/* SVG Content */}
+      <div
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: 'center center',
+          transition: isPanning ? 'none' : 'transform 0.2s ease-out',
+        }}
+      >
+        <svg 
+          width={width} 
+          height={height} 
+          viewBox={`0 0 ${width} ${height}`} 
+          xmlns="http://www.w3.org/2000/svg"
+          className="floor-plan-svg"
+          ref={svgRef}
+          style={{ display: 'block', margin: '0 auto' }}
+        >
+      {/* Background - clean white like Maket.ai */}
+      <rect width={width} height={height} fill="#ffffff" />
 
       {/* Group for floor plan elements */}
       <g id="floorPlan" transform={`translate(${offsetX}, ${offsetY})`}>
@@ -117,92 +252,40 @@ export function FloorPlanSVGExporter({ planData, width = 800, height = 600 }: Fl
 
             return (
               <g key={idx} id={`room-${idx}-${room.name.replace(/\s+/g, '-')}`}>
-                {/* Room fill */}
+                {/* Room fill - pure white */}
                 <rect
                   x={x}
                   y={y}
                   width={w}
                   height={h}
-                  fill={roomColor}
-                  fillOpacity="0.3"
-                  stroke="#94a3b8"
-                  strokeWidth="1"
-                  strokeDasharray="3,3"
+                  fill="#ffffff"
+                  stroke="none"
                 />
                 
-                {/* Room label */}
+                {/* Room label - professional style */}
                 <text
                   x={x + w / 2}
-                  y={y + h / 2 - 8}
+                  y={y + h / 2}
                   textAnchor="middle"
-                  fill="#1e293b"
-                  fontSize="12"
+                  fill="#1a1a1a"
+                  fontSize="13"
                   fontWeight="600"
+                  fontFamily="Arial, sans-serif"
                   style={{ userSelect: 'none' }}
                 >
                   {room.name}
                 </text>
-                
-                {/* Room area */}
-                <text
-                  x={x + w / 2}
-                  y={y + h / 2 + 6}
-                  textAnchor="middle"
-                  fill="#64748b"
-                  fontSize="10"
-                  style={{ userSelect: 'none' }}
-                >
-                  {area} m²
-                </text>
-                
-                {/* Room dimensions */}
-                <text
-                  x={x + w / 2}
-                  y={y + h / 2 + 18}
-                  textAnchor="middle"
-                  fill="#94a3b8"
-                  fontSize="9"
-                  style={{ userSelect: 'none' }}
-                >
-                  {room.width.toFixed(1)}m × {room.height.toFixed(1)}m
-                </text>
 
-                {/* Furniture icons */}
+                {/* Professional furniture shapes */}
                 {room.furniture.map((item, furIdx) => {
-                  const furnitureIcons: Record<string, string> = {
-                    sofa: "🛋️",
-                    bed: "🛏️",
-                    table: "🪑",
-                    desk: "🖥️",
-                    chair: "💺",
-                    toilet: "🚽",
-                    bathtub: "🛁",
-                    sink: "🚰",
-                    stove: "🔥",
-                  }
-                  
-                  const icon = furnitureIcons[item] || "📦"
-                  const furX = x + 10 + (furIdx % 3) * 20
-                  const furY = y + h - 30 + Math.floor(furIdx / 3) * 20
-
-                  return (
-                    <text
-                      key={furIdx}
-                      x={furX}
-                      y={furY}
-                      fontSize="14"
-                      style={{ userSelect: 'none' }}
-                    >
-                      {icon}
-                    </text>
-                  )
+                  return renderSVGFurniture(item, x, y, w, h, furIdx, idx)
                 })}
               </g>
             )
           })}
         </g>
 
-        {/* Walls */}
+        {/* Walls - bold black like Maket.ai */}
         <g id="walls">
           {planData.walls.map((wall, idx) => {
             const x1 = wall.x1 * scale
@@ -210,49 +293,28 @@ export function FloorPlanSVGExporter({ planData, width = 800, height = 600 }: Fl
             const x2 = wall.x2 * scale
             const y2 = wall.y2 * scale
 
-            // Calculate wall length
-            const length = Math.sqrt(Math.pow(wall.x2 - wall.x1, 2) + Math.pow(wall.y2 - wall.y1, 2))
-            const midX = (x1 + x2) / 2
-            const midY = (y1 + y2) / 2
-
             return (
-              <g key={idx} id={`wall-${idx}`}>
-                {/* Wall line */}
-                <line
-                  x1={x1}
-                  y1={y1}
-                  x2={x2}
-                  y2={y2}
-                  stroke="#334155"
-                  strokeWidth="8"
-                  strokeLinecap="square"
-                />
-
-                {/* Dimension label */}
-                {length > 0.5 && (
-                  <text
-                    x={midX}
-                    y={midY - 10}
-                    textAnchor="middle"
-                    fill="#0f172a"
-                    fontSize="9"
-                    fontWeight="500"
-                    style={{ userSelect: 'none' }}
-                  >
-                    {length.toFixed(1)}m
-                  </text>
-                )}
-              </g>
+              <line
+                key={idx}
+                id={`wall-${idx}`}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke="#000000"
+                strokeWidth="6"
+                strokeLinecap="square"
+              />
             )
           })}
         </g>
 
-        {/* Doors */}
+        {/* Doors - professional style */}
         <g id="doors">
           {planData.doors.map((door, idx) => {
             const x = door.x * scale
             const y = door.y * scale
-            const doorWidth = 1.2 * scale // 1.2m door width
+            const doorWidth = 1.2 * scale
             const rotation = door.rotation || 0
 
             return (
@@ -261,30 +323,30 @@ export function FloorPlanSVGExporter({ planData, width = 800, height = 600 }: Fl
                 id={`door-${idx}`}
                 transform={`translate(${x}, ${y}) rotate(${rotation})`}
               >
-                {/* Door frame */}
+                {/* Door opening - white gap */}
                 <line
                   x1={0}
                   y1={0}
                   x2={doorWidth}
                   y2={0}
-                  stroke="#8B4513"
-                  strokeWidth="3"
+                  stroke="#ffffff"
+                  strokeWidth="8"
                 />
                 
-                {/* Door arc */}
+                {/* Door swing arc */}
                 <path
-                  d={`M ${doorWidth} 0 A ${doorWidth} ${doorWidth} 0 0 1 0 ${doorWidth}`}
+                  d={`M ${doorWidth} 0 Q ${doorWidth * 0.7} ${-doorWidth * 0.5} 0 ${-doorWidth * 0.7}`}
                   fill="none"
-                  stroke="#8B4513"
+                  stroke="#000000"
                   strokeWidth="1.5"
-                  strokeDasharray="2,2"
+                  strokeDasharray="3,3"
                 />
               </g>
             )
           })}
         </g>
 
-        {/* Windows */}
+        {/* Windows - clean style */}
         <g id="windows">
           {planData.windows.map((window, idx) => {
             const x = window.x * scale
@@ -292,25 +354,17 @@ export function FloorPlanSVGExporter({ planData, width = 800, height = 600 }: Fl
             const windowWidth = (window.width || 1.5) * scale
 
             return (
-              <g key={idx} id={`window-${idx}`}>
-                {/* Window frame (double line) */}
-                <line
-                  x1={x}
-                  y1={y - 2}
-                  x2={x + windowWidth}
-                  y2={y - 2}
-                  stroke="#60a5fa"
-                  strokeWidth="2"
-                />
-                <line
-                  x1={x}
-                  y1={y + 2}
-                  x2={x + windowWidth}
-                  y2={y + 2}
-                  stroke="#60a5fa"
-                  strokeWidth="2"
-                />
-              </g>
+              <line
+                key={idx}
+                id={`window-${idx}`}
+                x1={x}
+                y1={y}
+                x2={x + windowWidth}
+                y2={y}
+                stroke="#000000"
+                strokeWidth="3"
+                strokeLinecap="square"
+              />
             )
           })}
         </g>
@@ -334,7 +388,9 @@ export function FloorPlanSVGExporter({ planData, width = 800, height = 600 }: Fl
           Scale: 1:{Math.round(100 / scale)} • Total Area: {planData.rooms.reduce((sum, r) => sum + r.width * r.height, 0).toFixed(1)} m²
         </text>
       </g>
-    </svg>
+        </svg>
+      </div>
+    </div>
   )
 }
 
@@ -354,4 +410,96 @@ export function downloadFloorPlanSVG(planData: FloorPlanData, filename: string =
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
+}
+
+// Professional furniture rendering for SVG
+function renderSVGFurniture(
+  item: string,
+  roomX: number,
+  roomY: number,
+  roomWidth: number,
+  roomHeight: number,
+  index: number,
+  roomIndex: number
+) {
+  // Position furniture in different locations
+  const positions = [
+    { x: roomX + 15, y: roomY + 15 }, // Top-left
+    { x: roomX + roomWidth - 35, y: roomY + 15 }, // Top-right
+    { x: roomX + 15, y: roomY + roomHeight - 35 }, // Bottom-left
+    { x: roomX + roomWidth - 35, y: roomY + roomHeight - 35 }, // Bottom-right
+    { x: roomX + roomWidth / 2 - 10, y: roomY + 15 }, // Top-center
+    { x: roomX + roomWidth / 2 - 10, y: roomY + roomHeight - 35 }, // Bottom-center
+  ]
+  
+  const pos = positions[index % positions.length]
+  const type = item.toLowerCase()
+  const furKey = `fur-${roomIndex}-${index}`
+  
+  // Sofa
+  if (type === 'sofa') {
+    return (
+      <g key={furKey}>
+        <rect x={pos.x} y={pos.y} width="35" height="20" fill="#000000" stroke="#000000" strokeWidth="1" />
+        <rect x={pos.x} y={pos.y} width="35" height="5" fill="#000000" />
+      </g>
+    )
+  }
+  
+  // Bed
+  if (type === 'bed') {
+    return (
+      <g key={furKey}>
+        <rect x={pos.x} y={pos.y} width="30" height="40" fill="#000000" stroke="#000000" strokeWidth="1" />
+        <rect x={pos.x} y={pos.y} width="30" height="8" fill="#666666" />
+      </g>
+    )
+  }
+  
+  // Table
+  if (type.includes('table')) {
+    return (
+      <circle key={furKey} cx={pos.x + 12} cy={pos.y + 12} r="12" fill="none" stroke="#000000" strokeWidth="2" />
+    )
+  }
+  
+  // Toilet
+  if (type === 'toilet') {
+    return (
+      <g key={furKey}>
+        <circle cx={pos.x + 8} cy={pos.y + 10} r="8" fill="none" stroke="#000000" strokeWidth="2" />
+        <rect x={pos.x + 6} y={pos.y + 2} width="4" height="6" fill="none" stroke="#000000" strokeWidth="1.5" />
+      </g>
+    )
+  }
+  
+  // Sink/Bathtub
+  if (type === 'sink' || type === 'bathtub' || type === 'shower') {
+    return (
+      <rect key={furKey} x={pos.x} y={pos.y} width="25" height="18" fill="none" stroke="#000000" strokeWidth="2" />
+    )
+  }
+  
+  // Stove/Refrigerator
+  if (type === 'stove' || type === 'refrigerator') {
+    return (
+      <g key={furKey}>
+        <rect x={pos.x} y={pos.y} width="20" height="25" fill="none" stroke="#000000" strokeWidth="2" />
+        <circle cx={pos.x + 6} cy={pos.y + 8} r="3" fill="none" stroke="#000000" strokeWidth="1" />
+        <circle cx={pos.x + 14} cy={pos.y + 8} r="3" fill="none" stroke="#000000" strokeWidth="1" />
+      </g>
+    )
+  }
+  
+  // Chair
+  if (type === 'chair') {
+    return (
+      <rect key={furKey} x={pos.x} y={pos.y} width="12" height="12" fill="none" stroke="#000000" strokeWidth="1.5" />
+    )
+  }
+  
+  // Default
+  return (
+    <circle key={furKey} cx={pos.x + 8} cy={pos.y + 8} r="8" fill="none" stroke="#000000" strokeWidth="1.5" />
+  )
 }
