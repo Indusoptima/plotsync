@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # PlotSync - AI Floor Plan Generator
 
 A complete Maket.ai clone built with Next.js 14, featuring AI-powered residential floor plan generation.
@@ -215,3 +216,6 @@ Built as a Maket.ai clone for educational purposes.
 - Check the FAQ section on the landing page
 - Review the code comments
 - Open an issue on GitHub
+=======
+# plotsync
+>>>>>>> 1f3aeeb23ceebb458c08d2e072d7db7fa6987cc1
