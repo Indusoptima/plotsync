@@ -1,39 +1,63 @@
 /**
- * Stage A: Dynamic LLM Prompt Builder
- * Constructs optimized prompts for floor plan specification generation
+ * Stage A: Enhanced Dynamic LLM Prompt Builder
+ * Constructs optimized prompts with architectural context for floor plan specification generation
  */
 
 import { GenerateFloorPlanRequest } from '../types';
 import { ROOM_AREA_RANGES, ROOM_ASPECT_RATIOS, ROOM_ZONES, DEFAULT_ADJACENCIES } from '../config';
+import { 
+  ROOM_STANDARDS, 
+  MANDATORY_ADJACENCIES, 
+  classifyBuildingTypology,
+  FUNCTIONAL_REQUIREMENTS 
+} from './architectural-rules';
 
 export function buildSpecificationPrompt(request: GenerateFloorPlanRequest): string {
   const { userInput, parameters } = request;
   
-  const systemRole = `You are an expert architectural specification analyst. Your task is to convert natural language floor plan descriptions into precise, structured JSON specifications that will be used by a geometric layout engine.
-
-CRITICAL RULES:
-1. Output ONLY valid JSON - no markdown, no explanations, no code blocks
-2. All measurements must be in METERS (m²)
-3. Every room must have realistic dimensions based on architectural standards
-4. Total room areas + 15% circulation should not exceed the total area
-5. Include strong adjacency preferences for functionally related rooms
-6. Ensure all constraints are mathematically solvable`;
-
+  // Determine building typology
+  const totalArea = parameters.totalArea || 80;
+  const roomCount = Object.values(parameters.rooms).reduce((sum, count) => sum + (count || 0), 0);
+  const typology = classifyBuildingTypology(totalArea, roomCount);
+  
+  const systemRole = buildEnhancedSystemRole(typology);
   const userPrompt = buildUserPrompt(userInput, parameters);
-  
+  const architecturalContext = buildArchitecturalContext(typology, parameters);
   const schemaDefinition = buildSchemaDefinition();
-  
   const examples = buildExamples();
   
   return `${systemRole}
 
 ${userPrompt}
 
+${architecturalContext}
+
 ${schemaDefinition}
 
 ${examples}
 
 Now generate the specification in pure JSON format (no markdown, no code blocks):`;
+}
+
+/**
+ * Build enhanced system role with architectural expertise
+ */
+function buildEnhancedSystemRole(typology: string): string {
+  return `You are an expert architectural specification analyst with deep knowledge of residential design standards and building codes. Your task is to convert natural language floor plan descriptions into precise, structured JSON specifications that will be used by a geometric layout engine.
+
+BUILDING TYPOLOGY: ${typology.toUpperCase()}
+
+CRITICAL RULES:
+1. Output ONLY valid JSON - no markdown, no explanations, no code blocks
+2. All measurements must be in METERS (m²)
+3. Every room must have realistic dimensions based on architectural standards
+4. Total room areas + 15% circulation should equal 75-85% of total area
+5. Include strong adjacency preferences for functionally related rooms (kitchen↔dining: weight 10)
+6. Ensure all constraints are geometrically solvable
+7. Follow zone-based spatial organization (public/private/service)
+8. Apply minimum dimension standards for code compliance
+9. Consider furniture clearance zones in room sizing
+10. Prioritize natural light access for habitable rooms`;
 }
 
 function buildUserPrompt(userInput: string, parameters: GenerateFloorPlanRequest['parameters']): string {
@@ -74,6 +98,84 @@ User Description: "${userInput}"
   }
   
   return prompt;
+}
+
+/**
+ * Build architectural context section
+ */
+function buildArchitecturalContext(typology: string, parameters: GenerateFloorPlanRequest['parameters']): string {
+  let context = `ARCHITECTURAL CONTEXT:
+
+`;
+  
+  // Building typology guidance
+  context += `Building Type: ${typology}\n`;
+  
+  if (typology === 'studio') {
+    context += `- Compact layout, open plan preferred\n`;
+    context += `- Minimize circulation, maximize usable space\n`;
+    context += `- Consider murphy bed or convertible furniture zones\n`;
+  } else if (typology === 'apartment') {
+    context += `- Efficient layout with central hallway or open plan\n`;
+    context += `- Group wet areas (kitchen, bathroom) for plumbing efficiency\n`;
+    context += `- Maximize natural light in living and bedrooms\n`;
+  } else if (typology === 'villa' || typology === 'townhouse') {
+    context += `- Clear zoning: public spaces near entrance, private zones separated\n`;
+    context += `- Master bedroom with ensuite if space allows\n`;
+    context += `- Consider outdoor access (balcony, patio)\n`;
+  }
+  
+  // Mandatory adjacency rules
+  context += `\nMANDATORY ADJACENCY RULES:\n`;
+  const relevantAdjacencies = MANDATORY_ADJACENCIES.filter(adj => 
+    adj.weight >= 8 // Only show high-priority adjacencies
+  );
+  relevantAdjacencies.forEach(adj => {
+    context += `- ${adj.from} ↔ ${adj.to}: weight ${adj.weight} (${adj.type}) - ${adj.justification}\n`;
+  });
+  
+  // Functional requirements for requested rooms
+  context += `\nFUNCTIONAL REQUIREMENTS:\n`;
+  const requestedRoomTypes = Object.entries(parameters.rooms)
+    .filter(([_, count]) => count && count > 0)
+    .map(([type, _]) => type);
+    
+  requestedRoomTypes.forEach(roomType => {
+    const normalizedType = normalizeRoomType(roomType);
+    if (normalizedType && FUNCTIONAL_REQUIREMENTS[normalizedType]) {
+      context += `${normalizedType}:\n`;
+      FUNCTIONAL_REQUIREMENTS[normalizedType].forEach(req => {
+        if (req.required) {
+          context += `  - ${req.description}${req.minValue ? ` (min: ${req.minValue}m)` : ''}\n`;
+        }
+      });
+    }
+  });
+  
+  // Circulation standards
+  context += `\nCIRCULATION STANDARDS:\n`;
+  context += `- Allocate 15% of total area for hallways and circulation\n`;
+  context += `- Minimum corridor width: 1.2m\n`;
+  context += `- Minimum door clearance: 1.0m\n`;
+  
+  return context;
+}
+
+/**
+ * Normalize room type from request to RoomType
+ */
+function normalizeRoomType(type: string): keyof typeof FUNCTIONAL_REQUIREMENTS | null {
+  const mapping: Record<string, keyof typeof FUNCTIONAL_REQUIREMENTS> = {
+    'bedroom': 'bedroom',
+    'bathroom': 'bathroom',
+    'kitchen': 'kitchen',
+    'livingRoom': 'living',
+    'diningRoom': 'dining',
+    'study': 'study',
+    'utility': 'utility',
+    'garage': 'garage'
+  };
+  return mapping[type] || null;
 }
 
 function buildSchemaDefinition(): string {
@@ -127,25 +229,15 @@ OUTPUT SCHEMA:
   }
 }
 
-ROOM AREA GUIDELINES (m²):
-${Object.entries(ROOM_AREA_RANGES).map(([type, range]) => 
-  `- ${type}: ${range.min}-${range.max} m² (optimal: ${range.optimal} m²)`
-).join('\n')}
-
-ASPECT RATIO GUIDELINES:
-${Object.entries(ROOM_ASPECT_RATIOS).map(([type, ratio]) => 
-  `- ${type}: ${ratio.min}-${ratio.max}`
+ROOM STANDARDS (with minimum dimensions):
+${Object.entries(ROOM_STANDARDS).map(([type, standard]) => 
+  `- ${type}: ${standard.minArea}-${standard.maxArea} m² (optimal: ${standard.optimalArea} m²)\n  Min dimension: ${standard.minDimension}m, Aspect ratio: ${standard.aspectRatioRange.min}-${standard.aspectRatioRange.max}`
 ).join('\n')}
 
 ZONE CLASSIFICATION:
 ${Object.entries(ROOM_ZONES).map(([type, zone]) => 
   `- ${type}: ${zone}`
-).join('\n')}
-
-COMMON ADJACENCY PREFERENCES:
-${DEFAULT_ADJACENCIES.map(adj => 
-  `- ${adj.from} ↔ ${adj.to}: weight ${adj.weight}`
-).join('\n')}`;
+).join('\n')}` ;
 }
 
 function buildExamples(): string {

@@ -5,6 +5,7 @@ import { Stage, Layer, Line, Rect, Text, Circle, Group } from "react-konva"
 import { Button } from "@/components/ui/button"
 import { ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
 import Konva from "konva"
+import { STROKE_CONFIG, ADAPTIVE_SCALE } from "@/lib/floor-plan/config"
 
 interface FloorPlanData {
   walls: Array<{ x1: number; y1: number; x2: number; y2: number }>
@@ -163,7 +164,7 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
     )
   }
 
-  // Calculate bounds for centering - FIXED SCALE approach
+  // Calculate bounds for centering - ADAPTIVE SCALE approach
   // Find actual min/max coordinates from all elements
   const allX = [
     ...planData.walls.flatMap(w => [w.x1, w.x2]),
@@ -185,9 +186,18 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
   const planWidth = maxX - minX
   const planHeight = maxY - minY
 
-  // FIXED SCALE: Use large consistent scale for all floor plans (15 pixels per meter)
-  // This ensures all floor plans display prominently with consistent visual size
-  const scale = 15  // 15 pixels = 1 meter (increased from 5 for much larger display)
+  // ADAPTIVE SCALE: Calculate scale based on floor plan dimensions
+  // Ensures minimum visual size for all floor plans (small apartments get scaled up)
+  // while preventing over-magnification of very small floor plans
+  const scaleX = ADAPTIVE_SCALE.minDisplayWidth / planWidth
+  const scaleY = ADAPTIVE_SCALE.minDisplayHeight / planHeight
+  const minRequiredScale = Math.max(scaleX, scaleY)
+  
+  // Apply constraints: enforce min/max scale limits
+  const scale = Math.max(
+    ADAPTIVE_SCALE.minScale,
+    Math.min(minRequiredScale, ADAPTIVE_SCALE.maxScale)
+  )
   
   // Calculate scaled dimensions
   const scaledWidth = planWidth * scale
@@ -272,6 +282,10 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
           const centerX = room.x * scale + offsetX + (room.width * scale) / 2
           const centerY = room.y * scale + offsetY + (room.height * scale) / 2
           
+          // Calculate room dimensions
+          const area = (room.width * room.height).toFixed(1)
+          const dimensions = `${room.width.toFixed(1)}m × ${room.height.toFixed(1)}m`
+          
           return (
             <Group key={`room-${index}`}>
               {/* Room fill - pure white */}
@@ -283,15 +297,39 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
                 fill="#ffffff"
               />
               
-              {/* Room name - professional style */}
+              {/* Room name - clean and simple */}
               <Text
                 x={centerX}
-                y={centerY - 8}
+                y={centerY - 10}
                 text={room.name}
                 fontSize={13}
                 fontFamily="Arial, sans-serif"
                 fontStyle="bold"
                 fill="#1a1a1a"
+                align="center"
+                offsetX={room.width * scale / 2}
+              />
+              
+              {/* Room dimensions - width × height */}
+              <Text
+                x={centerX}
+                y={centerY + 5}
+                text={dimensions}
+                fontSize={10}
+                fontFamily="Arial, sans-serif"
+                fill="#666666"
+                align="center"
+                offsetX={room.width * scale / 2}
+              />
+              
+              {/* Room area - square meters */}
+              <Text
+                x={centerX}
+                y={centerY + 18}
+                text={`${area} m²`}
+                fontSize={10}
+                fontFamily="Arial, sans-serif"
+                fill="#666666"
                 align="center"
                 offsetX={room.width * scale / 2}
               />
@@ -306,7 +344,7 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
           )
         })}
 
-        {/* Walls - bold black lines like Maket.ai */}
+        {/* Walls - bold black lines like Maket.ai (4px for canvas to match SVG 6px visual weight) */}
         {planData.walls.map((wall, index) => {
           return (
             <Line
@@ -318,13 +356,13 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
                 wall.y2 * scale + offsetY,
               ]}
               stroke="#000000"
-              strokeWidth={6}
+              strokeWidth={STROKE_CONFIG.canvas.wallStroke}
               lineCap="square"
             />
           )
         })}
 
-        {/* Doors - professional style like Maket.ai */}
+        {/* Doors - professional style like Maket.ai (calibrated for canvas rendering) */}
         {planData.doors.map((door, index) => {
           const doorX = door.x * scale + offsetX
           const doorY = door.y * scale + offsetY
@@ -333,31 +371,31 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
           
           return (
             <Group key={`door-${index}`} x={doorX} y={doorY} rotation={angle}>
-              {/* Door opening - white gap in wall */}
+              {/* Door opening - white gap in wall (reduced to 6px for canvas) */}
               <Line
                 points={[0, 0, doorWidth, 0]}
                 stroke="#ffffff"
-                strokeWidth={8}
+                strokeWidth={STROKE_CONFIG.canvas.doorGapStroke}
                 lineCap="butt"
               />
-              {/* Door swing arc */}
+              {/* Door swing arc (increased to 2.5px to balance with thinner walls) */}
               <Line
                 points={[
                   0, 0,
                   doorWidth * 0.7, -doorWidth * 0.7,
                 ]}
                 stroke="#000000"
-                strokeWidth={1.5}
+                strokeWidth={STROKE_CONFIG.canvas.doorArcStroke}
                 dash={[3, 3]}
               />
             </Group>
           )
         })}
 
-        {/* Windows - professional style */}
+        {/* Windows - Maket.ai style (4px black line for canvas to match SVG 6px visual weight) */}
         {planData.windows.map((window, index) => (
           <Group key={`window-${index}`}>
-            {/* Window - thin lines like Maket.ai */}
+            {/* Window - thick black line matching wall thickness */}
             <Line
               points={[
                 window.x * scale + offsetX,
@@ -366,7 +404,7 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
                 window.y * scale + offsetY,
               ]}
               stroke="#000000"
-              strokeWidth={3}
+              strokeWidth={STROKE_CONFIG.canvas.windowStroke}
               lineCap="square"
             />
           </Group>
@@ -377,7 +415,7 @@ export function FloorPlanCanvas({ planData, width, height }: FloorPlanCanvasProp
   )
 }
 
-// Professional furniture rendering function - Maket.ai style
+// Professional furniture rendering function - Maket.ai style with geometric symbols
 function renderFurnitureShape(
   item: string,
   room: { x: number; y: number; width: number; height: number },
@@ -391,103 +429,178 @@ function renderFurnitureShape(
   const roomWidth = room.width * scale
   const roomHeight = room.height * scale
   
-  // Position furniture in different corners/locations
+  // Position furniture with 15px padding from room edges (Maket.ai standard)
+  // Distribute across 6 predefined locations for optimal placement
+  const padding = 15
   const positions = [
-    { x: roomX + 15, y: roomY + 15 }, // Top-left
-    { x: roomX + roomWidth - 35, y: roomY + 15 }, // Top-right
-    { x: roomX + 15, y: roomY + roomHeight - 35 }, // Bottom-left
-    { x: roomX + roomWidth - 35, y: roomY + roomHeight - 35 }, // Bottom-right
-    { x: roomX + roomWidth / 2 - 10, y: roomY + 15 }, // Top-center
-    { x: roomX + roomWidth / 2 - 10, y: roomY + roomHeight - 35 }, // Bottom-center
+    { x: roomX + padding, y: roomY + padding }, // Top-left
+    { x: roomX + roomWidth - 40, y: roomY + padding }, // Top-right
+    { x: roomX + padding, y: roomY + roomHeight - 45 }, // Bottom-left
+    { x: roomX + roomWidth - 40, y: roomY + roomHeight - 45 }, // Bottom-right
+    { x: roomX + roomWidth / 2 - 15, y: roomY + padding }, // Top-center
+    { x: roomX + roomWidth / 2 - 15, y: roomY + roomHeight - 45 }, // Bottom-center
   ]
   
   const pos = positions[index % positions.length]
-  
   const type = item.toLowerCase()
   
-  // Sofa - rectangle with smaller rectangle (backrest)
-  if (type === 'sofa') {
-    return (
-      <>
-        <Rect x={pos.x} y={pos.y} width={35} height={20} fill="#000000" stroke="#000000" strokeWidth={1} />
-        <Rect x={pos.x} y={pos.y} width={35} height={5} fill="#000000" />
-      </>
-    )
-  }
-  
-  // Bed - rectangle with line for pillow
+  // Bed - Rectangle with pillow line (30px × 40px)
   if (type === 'bed') {
     return (
       <>
-        <Rect x={pos.x} y={pos.y} width={30} height={40} fill="#000000" stroke="#000000" strokeWidth={1} />
-        <Rect x={pos.x} y={pos.y} width={30} height={8} fill="#666666" />
+        <Rect 
+          x={pos.x} 
+          y={pos.y} 
+          width={30} 
+          height={40} 
+          fill="none" 
+          stroke="#000000" 
+          strokeWidth={STROKE_CONFIG.canvas.furnitureStroke} 
+        />
+        <Line
+          points={[pos.x, pos.y, pos.x + 30, pos.y]}
+          stroke="#666666"
+          strokeWidth={STROKE_CONFIG.canvas.furnitureStroke}
+        />
       </>
     )
   }
   
-  // Table/Dining table - simple rectangle or circle
-  if (type.includes('table')) {
+  // Sofa - Rectangle with backrest rectangle (35px × 20px)
+  if (type === 'sofa') {
     return (
-      <Circle x={pos.x + 12} y={pos.y + 12} radius={12} fill="none" stroke="#000000" strokeWidth={2} />
+      <>
+        <Rect 
+          x={pos.x} 
+          y={pos.y} 
+          width={35} 
+          height={20} 
+          fill="none" 
+          stroke="#000000" 
+          strokeWidth={STROKE_CONFIG.canvas.furnitureStroke} 
+        />
+        <Rect 
+          x={pos.x} 
+          y={pos.y} 
+          width={35} 
+          height={5} 
+          fill="#000000" 
+        />
+      </>
     )
   }
   
-  // Toilet - oval shape
+  // Table/Dining Table - Circle (radius: 12px)
+  if (type.includes('table')) {
+    return (
+      <Circle 
+        x={pos.x + 15} 
+        y={pos.y + 15} 
+        radius={12} 
+        fill="none" 
+        stroke="#000000" 
+        strokeWidth={2} 
+      />
+    )
+  }
+  
+  // Toilet - Circle + small rectangle (tank)
   if (type === 'toilet') {
     return (
       <>
-        <Circle x={pos.x + 8} y={pos.y + 10} radius={8} fill="none" stroke="#000000" strokeWidth={2} />
-        <Rect x={pos.x + 6} y={pos.y + 2} width={4} height={6} fill="none" stroke="#000000" strokeWidth={1.5} />
+        <Circle 
+          x={pos.x + 10} 
+          y={pos.y + 12} 
+          radius={8} 
+          fill="none" 
+          stroke="#000000" 
+          strokeWidth={2} 
+        />
+        <Rect 
+          x={pos.x + 8} 
+          y={pos.y + 3} 
+          width={4} 
+          height={6} 
+          fill="none" 
+          stroke="#000000" 
+          strokeWidth={STROKE_CONFIG.canvas.furnitureStroke} 
+        />
       </>
     )
   }
   
-  // Sink/Bathtub - rectangle
+  // Sink/Bathtub/Shower - Rectangle (25px × 18px)
   if (type === 'sink' || type === 'bathtub' || type === 'shower') {
     return (
-      <Rect x={pos.x} y={pos.y} width={25} height={18} fill="none" stroke="#000000" strokeWidth={2} />
+      <Rect 
+        x={pos.x} 
+        y={pos.y} 
+        width={25} 
+        height={18} 
+        fill="none" 
+        stroke="#000000" 
+        strokeWidth={2} 
+      />
     )
   }
   
-  // Stove/Refrigerator - rectangle with details
+  // Stove/Refrigerator - Rectangle with detail circles (20px × 25px)
   if (type === 'stove' || type === 'refrigerator') {
     return (
       <>
-        <Rect x={pos.x} y={pos.y} width={20} height={25} fill="none" stroke="#000000" strokeWidth={2} />
-        <Circle x={pos.x + 6} y={pos.y + 8} radius={3} fill="none" stroke="#000000" strokeWidth={1} />
-        <Circle x={pos.x + 14} y={pos.y + 8} radius={3} fill="none" stroke="#000000" strokeWidth={1} />
+        <Rect 
+          x={pos.x} 
+          y={pos.y} 
+          width={20} 
+          height={25} 
+          fill="none" 
+          stroke="#000000" 
+          strokeWidth={2} 
+        />
+        <Circle 
+          x={pos.x + 6} 
+          y={pos.y + 8} 
+          radius={3} 
+          fill="none" 
+          stroke="#000000" 
+          strokeWidth={1} 
+        />
+        <Circle 
+          x={pos.x + 14} 
+          y={pos.y + 8} 
+          radius={3} 
+          fill="none" 
+          stroke="#000000" 
+          strokeWidth={1} 
+        />
       </>
     )
   }
   
-  // Chair - small rectangle
+  // Chair - Small square (12px × 12px)
   if (type === 'chair') {
     return (
-      <Rect x={pos.x} y={pos.y} width={12} height={12} fill="none" stroke="#000000" strokeWidth={1.5} />
+      <Rect 
+        x={pos.x} 
+        y={pos.y} 
+        width={12} 
+        height={12} 
+        fill="none" 
+        stroke="#000000" 
+        strokeWidth={STROKE_CONFIG.canvas.furnitureStroke} 
+      />
     )
   }
   
-  // Default - small circle
+  // Default - Small circle (radius: 8px)
   return (
-    <Circle x={pos.x + 8} y={pos.y + 8} radius={8} fill="none" stroke="#000000" strokeWidth={1.5} />
+    <Circle 
+      x={pos.x + 10} 
+      y={pos.y + 10} 
+      radius={8} 
+      fill="none" 
+      stroke="#000000" 
+      strokeWidth={STROKE_CONFIG.canvas.furnitureStroke} 
+    />
   )
-}
-
-function getFurnitureSymbol(item: string): string {
-  const symbols: Record<string, string> = {
-    bed: "🛏️",
-    sofa: "🛋️",
-    tv: "📺",
-    toilet: "🚽",
-    sink: "🚿",
-    shower: "🚿",
-    bathtub: "🛁",
-    stove: "🍳",
-    refrigerator: "❄️",
-    "dining table": "🍽️",
-    wardrobe: "👔",
-    desk: "🖥️",
-    chair: "🪑",
-  }
-  return symbols[item.toLowerCase()] || "📦"
 }

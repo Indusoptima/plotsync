@@ -53,13 +53,35 @@ export interface RoomSpec {
   requiresWindow: boolean;
   requiresDoor: boolean;
   priority?: number; // For placement order
+  
+  // Enhanced fields for better specification
+  dimensionalConstraints?: {
+    minWidth?: number;
+    minLength?: number;
+    optimalDimensions?: { width: number; height: number };
+  };
+  functionalRequirements?: {
+    naturalLight: 'required' | 'preferred' | 'optional';
+    ventilation: 'required' | 'preferred' | 'optional';
+    furnitureZones?: Array<{
+      type: string;
+      clearance: number;
+      wallPlacement?: boolean;
+    }>;
+  };
+  spatialPreferences?: {
+    exteriorWall?: boolean;
+    cornerLocation?: boolean;
+    quietZone?: boolean;
+  };
 }
 
 export interface AdjacencyEdge {
   from: string; // Room ID
   to: string;   // Room ID
   weight: number; // 0-10, higher means stronger preference
-  type?: 'must' | 'should' | 'avoid';
+  type?: 'must' | 'should' | 'neutral' | 'avoid';
+  justification?: string; // Why this adjacency is important
 }
 
 export interface Constraint {

@@ -129,3 +129,46 @@ export const DEFAULT_ADJACENCIES = [
 
 // Circulation factor (percentage of total area)
 export const CIRCULATION_FACTOR = 0.15;
+
+/**
+ * Stroke width configuration for rendering modes
+ * 
+ * SVG Mode: Used for exports - maintains Maket.ai specification (6px walls/windows)
+ * Canvas Mode: Used for interactive display - calibrated for Konva rendering (4px walls/windows)
+ * 
+ * Canvas uses thinner strokes because Konva's anti-aliasing adds ~2px visual weight
+ * compared to browser SVG rendering.
+ */
+export const STROKE_CONFIG = {
+  svg: {
+    mode: 'svg' as const,
+    wallStroke: 6,        // Maket.ai specification - bold black walls
+    windowStroke: 6,      // Matches wall thickness for consistency
+    doorArcStroke: 2,     // Thin dashed arc for door swing
+    doorGapStroke: 8,     // White gap in wall for door opening
+    furnitureStroke: 1.5  // Thin lines for furniture symbols
+  },
+  canvas: {
+    mode: 'canvas' as const,
+    wallStroke: 4,        // Reduced to compensate for Konva anti-aliasing
+    windowStroke: 4,      // Matches wall thickness
+    doorArcStroke: 2.5,   // Increased to balance with thinner walls
+    doorGapStroke: 6,     // Reduced to match thinner walls
+    furnitureStroke: 1.5  // No change - already appropriate
+  }
+};
+
+/**
+ * Adaptive scaling configuration for floor plan display
+ * 
+ * Ensures all floor plans display at consistent, readable sizes regardless of actual area.
+ * Small floor plans (e.g., 50 m²) are scaled up to meet minimum display thresholds.
+ * Large floor plans (e.g., 2000 m²) are constrained to prevent tiny display.
+ */
+export const ADAPTIVE_SCALE = {
+  minDisplayWidth: 500,    // Minimum floor plan width in pixels
+  minDisplayHeight: 400,   // Minimum floor plan height in pixels
+  maxScale: 25,            // Maximum zoom level (pixels per meter)
+  minScale: 10,            // Minimum zoom level (pixels per meter)
+  defaultScale: 15         // Baseline for moderate floor plans (pixels per meter)
+};

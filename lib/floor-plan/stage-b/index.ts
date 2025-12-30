@@ -25,24 +25,26 @@ export class StageBOrchestrator {
   private wallSynthesizer: WallSynthesizer;
   private openingPlacer: OpeningPlacer;
   private validator: GeometricValidator;
+  private useEnhancedComponents: boolean;
 
-  constructor() {
-    this.solver = new ConstraintSolver();
+  constructor(useEnhancedComponents: boolean = true) {
+    this.solver = new ConstraintSolver(undefined, useEnhancedComponents);
     this.wallSynthesizer = new WallSynthesizer();
     this.openingPlacer = new OpeningPlacer();
     this.validator = new GeometricValidator();
+    this.useEnhancedComponents = useEnhancedComponents;
   }
 
   /**
    * Generate 2D geometric layout from specification
    */
-  async generate(spec: FloorPlanSpecification): Promise<StageBResult> {
+  async generate(spec: FloorPlanSpecification, variationSeed?: number): Promise<StageBResult> {
     const timer = new Timer();
     timer.start();
 
     try {
       // Step 1: Solve room placement constraints
-      const solution = this.solver.solve(spec);
+      const solution = this.solver.solve(spec, variationSeed);
       
       if (!solution.solved && solution.relaxedConstraints.length > 5) {
         throw new FloorPlanError(
@@ -254,3 +256,10 @@ export { ConstraintSolver } from './constraint-solver';
 export { WallSynthesizer } from './wall-synthesizer';
 export { OpeningPlacer } from './opening-placer';
 export { GeometricValidator } from './geometric-validator';
+export { zoneBasedPlacer, PlacedRoom } from './zone-based-placer';
+export { templateBasedPlacer } from './template-based-placer';
+export { templateSelector, LAYOUT_TEMPLATES, LayoutTemplate } from './layout-templates';
+export { enhancedWallSynthesizer } from './enhanced-wall-synthesizer';
+export { circulationAwareOpeningPlacer } from './circulation-aware-opening-placer';
+export { variationDiversityScorer } from './variation-diversity';
+export { multiObjectiveScorer } from './multi-objective-scorer';
